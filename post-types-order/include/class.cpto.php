@@ -548,7 +548,65 @@
                         <h2><?php echo esc_html( $this->current_post_type->labels->singular_name . ' -  '. esc_html__('Re-Order', 'post-types-order') ); ?></h2>
 
                         <?php $this->functions->cpt_info_box(); ?>  
-                        
+                        <!-- new code applied for category filter -->
+                        <?php
+                            $post_type = trim($this->current_post_type->name);
+                            $taxonomy = "";
+                            if($post_type == "post"){ 
+                                $taxonomy = "category";
+                            } else if($post_type == "product"){ 
+                                $taxonomy = "product_cat";
+                            } else { 
+                                $taxonomy_objects = get_object_taxonomies( $post_type );
+                                if($taxonomy_objects){
+                                    $taxonomy = $taxonomy_objects[0];
+                                }
+                            }
+                            if(!empty($taxonomy)){ 
+                               $args = array(
+                               'type'                     => $post_type,
+                               'order'                    => 'ASC',
+                               'hide_empty'      => true,
+                               'taxonomy'                 => trim($taxonomy),
+                               'pad_counts'               => false );
+                               $categories = get_categories($args);
+                               if(count($categories) > 0) { 
+                                echo "<p style='font-size: 16px;color: #65348f;'><strong style='margin-right: 10px;'>Please select a category from this dropdown list: </strong><select name='taxonomy_search' onChange='get_selected_taxonomy(this.value);''>";
+                                echo "<option value=''>All</option>";
+                                foreach($categories as $cat){ 
+                                    $select_item = "";
+                                    if(isset($_GET['sel_tax']) && !empty($_GET['sel_tax']) && trim($_GET['sel_tax']) == trim($cat->term_id)) { $select_item = "selected"; } 
+                                   echo "<option value='".$cat->term_id."' ".$select_item.">".$cat->name."</option>";
+                                }
+                                echo "</select></p>";
+                               }
+                            }
+                        ?>
+                        <script type="text/javascript">
+                        function get_selected_taxonomy(select_tax){
+                            if(select_tax){ 
+                              var new_location = window.location.href+"&sel_tax="+select_tax;
+                              window.location.replace(new_location);
+                            } else {
+                             window.location.replace(removeParams("sel_tax"));
+                            }
+                        }
+                        function removeParams(sParam){
+                            var url = window.location.href.split('?')[0]+'?';
+                            var sPageURL = decodeURIComponent(window.location.search.substring(1)),
+                            sURLVariables = sPageURL.split('&'),
+                            sParameterName,
+                            i;
+                            for (i = 0; i < sURLVariables.length; i++) {
+                                sParameterName = sURLVariables[i].split('=');
+                                if (sParameterName[0] != sParam) {
+                                    url = url + sParameterName[0] + '=' + sParameterName[1] + '&'
+                                }
+                            }
+                            return url.substring(0,url.length-1);
+                        }
+                        </script>
+                    <!-- new code applied for category filter -->
                         <div id="ajax-response"></div>
                         
                         <noscript>
@@ -559,7 +617,16 @@
                         
                         <div id="order-post-type">
                             <ul id="sortable">
+                            <?php 
+                             if(isset($_GET['sel_tax']) && !empty($_GET['sel_tax'])) { 
+                                $tax_id = trim($_GET['sel_tax']);
+                                if($tax_id){ 
+                                $this->listPages('hide_empty=0&title_li=&post_type='.$this->current_post_type->name,$taxonomy,$tax_id);
+                                }
+                             } else{ 
+                            ?>
                                 <?php $this->listPages('hide_empty=0&title_li=&post_type='.$this->current_post_type->name); ?>
+                             <?php } ?>   
                             </ul>
                             
                             <div class="clear"></div>
@@ -598,8 +665,7 @@
                     <?php
                 }
 
-            function listPages($args = '') 
-                {
+            function listPages($args = '', $taxonomy = '', $tax_id = '') {
                     $defaults = array(
                         'depth'             => -1, 
                         'date_format'       => get_option('date_format'),
@@ -610,33 +676,47 @@
 
                     $r = wp_parse_args( $args, $defaults );
                     extract( $r, EXTR_SKIP );
-
                     $output = '';
-
                     $r['exclude'] = implode( ',', apply_filters('wp_list_pages_excludes', array()) );
-                    
                     // Query pages.
                     $r['hierarchical'] = 0;
-                    $args = array(
-                                'sort_column'       =>  'menu_order',
-                                'post_type'         =>  $post_type,
-                                'posts_per_page'    => -1,
-                                'post_status'       =>  'any',
-                                'orderby'            => array(
-                                                            'menu_order'    => 'ASC',
-                                                            'post_date'     =>  'DESC'
-                                                            )
-                    );
-                    
+                    if(!empty($taxonomy) && !empty($tax_id)){ 
+                        $args = array(
+                            'sort_column'       =>  'menu_order',
+                            'post_type'         =>  $post_type,
+                            'posts_per_page'    => -1,
+                            'post_status'       =>  'any',
+                            'orderby'            => array(
+                                'menu_order'    => 'ASC',
+                                'post_date'     =>  'DESC'
+                            ),
+                            'tax_query' => array(
+                              array(
+                               'taxonomy' => trim($taxonomy),
+                               'field'    => 'term_id',
+                               'terms'    => trim($tax_id)
+                              )
+                            )
+                        );
+
+                    } else {
+                        $args = array(
+                            'sort_column'       =>  'menu_order',
+                            'post_type'         =>  $post_type,
+                            'posts_per_page'    => -1,
+                            'post_status'       =>  'any',
+                            'orderby'            => array(
+                                'menu_order'    => 'ASC',
+                                'post_date'     =>  'DESC'
+                            )
+                        );
+                    }
                     $the_query  = new WP_Query($args);
                     $pages      = $the_query->posts;
-
-                    if ( !empty($pages) ) 
-                        {
+                    if ( !empty($pages) ) {
                             $output .= $this->walkTree($pages, $r['depth'], $r);
                         }
-
-                    echo    wp_kses_post    (   $output );
+                    echo  wp_kses_post  (   $output );
                 }
             
             function walkTree($pages, $depth, $r) 
